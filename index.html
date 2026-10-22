@@ -15,8 +15,13 @@ const app = document.getElementById("app");
 const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 async function send(action, subject, body){
   const payload = {row_id:p.id, email:p.email, action, token:p.token, edited_subject:subject||"", edited_body:body||"", submitted_at:new Date().toISOString()};
-  // Clay webhooks return no CORS headers; form-encoded is a "simple" request Clay parses into fields.
-  await fetch(CLAY_WEBHOOK_URL, {method:"POST", mode:"no-cors", body:new URLSearchParams(payload)});
+  // Plain HTML form POST into a hidden iframe: not subject to CORS or fetch blockers.
+  return new Promise(res=>{
+    const ifr=document.createElement("iframe"); ifr.name="sink"+Date.now(); ifr.style.display="none"; document.body.appendChild(ifr);
+    const f=document.createElement("form"); f.method="POST"; f.action=CLAY_WEBHOOK_URL; f.target=ifr.name; f.style.display="none";
+    for(const k in payload){ const i=document.createElement("input"); i.type="hidden"; i.name=k; i.value=payload[k]; f.appendChild(i); }
+    document.body.appendChild(f); ifr.onload=()=>res(); setTimeout(res,4000); f.submit();
+  });
 }
 function done(msg){ app.innerHTML = `<p style="font-size:20px">${msg}</p><p class="muted">You can close this tab.</p>`; }
 function fail(e){ app.innerHTML = `<p>Something went wrong: ${esc(String(e))}</p>`; }
