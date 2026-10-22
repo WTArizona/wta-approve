@@ -21,7 +21,7 @@ async function send(action, subject, body){
 function done(msg){ app.innerHTML = `<p style="font-size:20px">${msg}</p><p class="muted">You can close this tab.</p>`; }
 function fail(e){ app.innerHTML = `<p>Something went wrong: ${esc(String(e))}</p>`; }
 const who = `<p><b>${esc(p.name)}</b> ${p.company?"— "+esc(p.company):""}<br><span class="muted">${esc(p.email)}</span></p>`;
-if(!p.id || !p.token || !["approve","deny","edit"].includes(p.action)){ app.innerHTML="<p>Invalid or incomplete link.</p>"; }
+if((!p.id && !p.email) || !p.token || !["approve","deny","edit"].includes(p.action)){ app.innerHTML="<p>Invalid or incomplete link.</p>"; }
 else if(p.action==="edit"){
   app.innerHTML = who+`<label>Subject</label><input id="s" value="${esc(p.subject)}"><label>Body</label><textarea id="b">${esc(p.body)}</textarea>
   <button class="ok" id="go">Save &amp; approve</button><button class="no" id="dn">Deny</button>`;
