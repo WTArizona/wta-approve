@@ -15,8 +15,8 @@ const app = document.getElementById("app");
 const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 async function send(action, subject, body){
   const payload = {row_id:p.id, email:p.email, action, token:p.token, edited_subject:subject||"", edited_body:body||"", submitted_at:new Date().toISOString()};
-  // Clay webhooks return no CORS headers, so send a "simple" request (text/plain, no-cors). Body is still JSON.
-  await fetch(CLAY_WEBHOOK_URL, {method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain"}, body:JSON.stringify(payload)});
+  // Clay webhooks return no CORS headers; form-encoded is a "simple" request Clay parses into fields.
+  await fetch(CLAY_WEBHOOK_URL, {method:"POST", mode:"no-cors", body:new URLSearchParams(payload)});
 }
 function done(msg){ app.innerHTML = `<p style="font-size:20px">${msg}</p><p class="muted">You can close this tab.</p>`; }
 function fail(e){ app.innerHTML = `<p>Something went wrong: ${esc(String(e))}</p>`; }
