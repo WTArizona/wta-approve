@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WTA Lead Approval</title>
+<style>body{font-family:system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 16px;color:#222}
+input,textarea{width:100%;box-sizing:border-box;font:inherit;padding:8px;margin:4px 0 12px}textarea{min-height:260px}
+button{font:inherit;padding:10px 18px;border:0;border-radius:6px;cursor:pointer;margin-right:8px}
+.ok{background:#2eb67d;color:#fff}.no{background:#e01e5a;color:#fff}.muted{color:#777;font-size:14px}</style></head>
+<body><h2 id="h">WTA Lead Approval</h2><div id="app"></div>
+<script>
+// Set to the "WTA Approvals" Clay webhook URL before deploying.
+const CLAY_WEBHOOK_URL = "https://api.clay.com/v3/sources/webhook/pull-in-data-from-a-webhook-32938ac1-f65d-48ce-a737-185345b6b381";
+const q = new URLSearchParams(location.search);
+const p = {id:q.get("id")||"", email:q.get("email")||"", action:(q.get("action")||"").toLowerCase(),
+  token:q.get("token")||"", subject:q.get("subject")||"", body:q.get("body")||"", name:q.get("name")||"", company:q.get("company")||""};
+const app = document.getElementById("app");
+const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+async function send(action, subject, body){
+  const payload = {row_id:p.id, email:p.email, action, token:p.token, edited_subject:subject||"", edited_body:body||"", submitted_at:new Date().toISOString()};
+  // Clay webhooks return no CORS headers, so send a "simple" request (text/plain, no-cors). Body is still JSON.
+  await fetch(CLAY_WEBHOOK_URL, {method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain"}, body:JSON.stringify(payload)});
+}
+function done(msg){ app.innerHTML = `<p style="font-size:20px">${msg}</p><p class="muted">You can close this tab.</p>`; }
+function fail(e){ app.innerHTML = `<p>Something went wrong: ${esc(String(e))}</p>`; }
+const who = `<p><b>${esc(p.name)}</b> ${p.company?"— "+esc(p.company):""}<br><span class="muted">${esc(p.email)}</span></p>`;
+if(!p.id || !p.token || !["approve","deny","edit"].includes(p.action)){ app.innerHTML="<p>Invalid or incomplete link.</p>"; }
+else if(p.action==="edit"){
+  app.innerHTML = who+`<label>Subject</label><input id="s" value="${esc(p.subject)}"><label>Body</label><textarea id="b">${esc(p.body)}</textarea>
+  <button class="ok" id="go">Save &amp; approve</button><button class="no" id="dn">Deny</button>`;
+  document.getElementById("go").onclick=()=>send("edit",document.getElementById("s").value,document.getElementById("b").value).then(()=>done("Edited ✏️ and approved")).catch(fail);
+  document.getElementById("dn").onclick=()=>send("deny").then(()=>done("Denied ❌")).catch(fail);
+} else {
+  const a=p.action==="approve";
+  app.innerHTML = who+`<p>${a?"Approve this email and send it to Smartlead?":"Deny this lead?"}</p>
+  <button class="${a?"ok":"no"}" id="go">${a?"Approve ✅":"Deny ❌"}</button>`;
+  document.getElementById("go").onclick=()=>send(p.action).then(()=>done(a?"Approved ✅":"Denied ❌")).catch(fail);
+}
+</script></body></html>
