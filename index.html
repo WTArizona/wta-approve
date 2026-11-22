@@ -8,6 +8,14 @@ button{font:inherit;padding:10px 18px;border:0;border-radius:6px;cursor:pointer;
 <script>
 // Set to the "WTA Approvals" Clay webhook URL before deploying.
 const CLAY_WEBHOOK_URL = "https://api.clay.com/v3/sources/webhook/pull-in-data-from-a-webhook-32938ac1-f65d-48ce-a737-185345b6b381";
+// Slack card status (stage 1). Called after the Clay post; never blocks or changes the Clay flow.
+const STATUS_URL = "https://gqcdrtzjxeaxfedrmzyl.supabase.co/functions/v1/approval-status";
+function notifyStatus(action){
+  try{
+    const data = JSON.stringify({row_id:p.id, email:p.email, action, token:p.token});
+    fetch(STATUS_URL,{method:"POST",mode:"no-cors",keepalive:true,headers:{"Content-Type":"text/plain"},body:data}).catch(()=>{});
+  }catch(e){}
+}
 const q = new URLSearchParams(location.search);
 const p = {id:q.get("id")||"", email:q.get("email")||"", action:(q.get("action")||"").toLowerCase(),
   token:q.get("token")||"", subject:q.get("subject")||"", body:q.get("body")||"", name:q.get("name")||"", company:q.get("company")||""};
@@ -21,7 +29,7 @@ async function send(action, subject, body){
     const f=document.createElement("form"); f.method="POST"; f.action=CLAY_WEBHOOK_URL; f.target=ifr.name; f.style.display="none";
     for(const k in payload){ const i=document.createElement("input"); i.type="hidden"; i.name=k; i.value=payload[k]; f.appendChild(i); }
     document.body.appendChild(f); ifr.onload=()=>res(); setTimeout(res,4000); f.submit();
-  });
+  }).then(()=>{ notifyStatus(action); });
 }
 function done(msg){ app.innerHTML = `<p style="font-size:20px">${msg}</p><p class="muted">You can close this tab.</p>`; }
 function fail(e){ app.innerHTML = `<p>Something went wrong: ${esc(String(e))}</p>`; }
