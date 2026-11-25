@@ -3,13 +3,18 @@
 <style>body{font-family:system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 16px;color:#222}
 input,textarea{width:100%;box-sizing:border-box;font:inherit;padding:8px;margin:4px 0 12px}textarea{min-height:260px}
 button{font:inherit;padding:10px 18px;border:0;border-radius:6px;cursor:pointer;margin-right:8px}
-.ok{background:#2eb67d;color:#fff}.no{background:#e01e5a;color:#fff}.muted{color:#777;font-size:14px}</style></head>
+.ok{background:#2eb67d;color:#fff}textarea.f{min-height:140px}
+.mail{white-space:pre-wrap;background:#f6f6f6;border-radius:6px;padding:10px 12px;margin:4px 0 14px}
+.note{white-space:pre-wrap;background:#fff7e0;border-left:4px solid #e8a400;padding:8px 12px;margin:4px 0 16px;font-size:14px}
+h4{margin:14px 0 2px}.no{background:#e01e5a;color:#fff}.muted{color:#777;font-size:14px}</style></head>
 <body><h2 id="h">WTA Lead Approval</h2><div id="app"></div>
 <script>
 // Set to the "WTA Approvals" Clay webhook URL before deploying.
 const CLAY_WEBHOOK_URL = "https://api.clay.com/v3/sources/webhook/pull-in-data-from-a-webhook-32938ac1-f65d-48ce-a737-185345b6b381";
 // Slack card status (stage 1). Called after the Clay post; never blocks or changes the Clay flow.
 const STATUS_URL = "https://gqcdrtzjxeaxfedrmzyl.supabase.co/functions/v1/approval-status";
+// Day 0 / Day 3 / Day 7 drafts stored with the card (read-only lookup, same token as the link).
+const DRAFT_URL = "https://gqcdrtzjxeaxfedrmzyl.supabase.co/functions/v1/approval-draft";
 function notifyStatus(action){
   try{
     const data = JSON.stringify({row_id:p.id, email:p.email, action, token:p.token});
@@ -34,6 +39,8 @@ async function send(action, subject, body){
 function done(msg){ app.innerHTML = `<p style="font-size:20px">${msg}</p><p class="muted">You can close this tab.</p>`; }
 function fail(e){ app.innerHTML = `<p>Something went wrong: ${esc(String(e))}</p>`; }
 const who = `<p><b>${esc(p.name)}</b> ${p.company?"— "+esc(p.company):""}<br><span class="muted">${esc(p.email)}</span></p>`;
+// Original single-email page (cards posted without the 3-email drafts). Unchanged behavior.
+function renderSingle(){
 if((!p.id && !p.email) || !p.token || !["approve","deny","edit"].includes(p.action)){ app.innerHTML="<p>Invalid or incomplete link.</p>"; }
 else if(p.action==="edit"){
   app.innerHTML = who+`<label>Subject</label><input id="s" value="${esc(p.subject)}"><label>Body</label><textarea id="b">${esc(p.body)}</textarea>
@@ -45,5 +52,48 @@ else if(p.action==="edit"){
   app.innerHTML = who+`<p>${a?"Approve this email and send it to Smartlead?":"Deny this lead?"}</p>
   <button class="${a?"ok":"no"}" id="go">${a?"Approve ✅":"Deny ❌"}</button>`;
   document.getElementById("go").onclick=()=>send(p.action).then(()=>done(a?"Approved ✅":"Denied ❌")).catch(fail);
+}
+}
+// 3-email page: Day 0, Day 3, Day 7 (+ subject and CONFIRM notes as read-only context).
+// Approve = all three as drafted (edited_body empty, same as before). Edit = edited_body carries
+// JSON {"day0","day3","day7"} with the three edited bodies; edited_subject = the drafted subject.
+function renderThree(d){
+  const day0 = d.day0 || p.body, subject = d.subject || p.subject;
+  const ctx = (subject?`<h4>Subject</h4><div class="mail">${esc(subject)}</div>`:"")
+    + (d.confirm?`<h4>Confirm before sending</h4><div class="note">${esc(d.confirm)}</div>`:"");
+  const decided = d.status && d.status!=="posted" ? `<p class="note">This lead is already marked <b>${esc(d.status)}</b>. The first decision is the one that counts.</p>` : "";
+  if(p.action==="edit"){
+    app.innerHTML = who+decided+ctx+`<label><b>Day 0</b> (first email)</label><textarea class="f" id="d0">${esc(day0)}</textarea>
+    <label><b>Day 3</b> (follow-up)</label><textarea class="f" id="d3">${esc(d.day3||"")}</textarea>
+    <label><b>Day 7</b> (follow-up)</label><textarea class="f" id="d7">${esc(d.day7||"")}</textarea>
+    <button class="ok" id="go">Save &amp; approve all 3</button><button class="no" id="dn">Deny</button>`;
+    document.getElementById("go").onclick=()=>{
+      const v = id => document.getElementById(id).value;
+      const edited = JSON.stringify({day0:v("d0"), day3:v("d3"), day7:v("d7")});
+      send("edit", subject, edited).then(()=>done("Edited ✏️ and approved (all 3 emails)")).catch(fail);
+    };
+    document.getElementById("dn").onclick=()=>send("deny").then(()=>done("Denied ❌")).catch(fail);
+  } else {
+    const a=p.action==="approve";
+    app.innerHTML = who+decided+ctx+`<h4>Day 0 (first email)</h4><div class="mail">${esc(day0)}</div>
+    <h4>Day 3 (follow-up)</h4><div class="mail">${esc(d.day3||"(none)")}</div>
+    <h4>Day 7 (follow-up)</h4><div class="mail">${esc(d.day7||"(none)")}</div>
+    <p>${a?"Approve all 3 emails as written and send them to Smartlead?":"Deny this lead?"}</p>
+    <button class="${a?"ok":"no"}" id="go">${a?"Approve all 3 ✅":"Deny ❌"}</button>`;
+    document.getElementById("go").onclick=()=>send(p.action).then(()=>done(a?"Approved ✅ (all 3 emails)":"Denied ❌")).catch(fail);
+  }
+}
+function loadDrafts(){
+  const qs = new URLSearchParams({row_id:p.id, email:p.email, token:p.token}).toString();
+  const ctl = ("AbortController" in window) ? new AbortController() : null;
+  const t = setTimeout(()=>{ try{ ctl&&ctl.abort(); }catch(e){} }, 6000);
+  return fetch(DRAFT_URL+"?"+qs, {method:"GET", cache:"no-store", signal:ctl?ctl.signal:undefined})
+    .then(r=>r.ok?r.json():null).catch(()=>null).finally(()=>clearTimeout(t));
+}
+if((!p.id && !p.email) || !p.token || !["approve","deny","edit"].includes(p.action)){ renderSingle(); }
+else {
+  app.innerHTML = who+`<p class="muted">Loading…</p>`;
+  loadDrafts().then(d=>{ (d && d.ok && d.has_drafts && (d.day3 || d.day7)) ? renderThree(d) : renderSingle(); })
+    .catch(()=>renderSingle());
 }
 </script></body></html>
