@@ -59,28 +59,33 @@ else if(p.action==="edit"){
 // JSON {"day0","day3","day7"} with the three edited bodies; edited_subject = the drafted subject.
 function renderThree(d){
   const day0 = d.day0 || p.body, subject = d.subject || p.subject;
-  const ctx = (subject?`<h4>Subject</h4><div class="mail">${esc(subject)}</div>`:"")
-    + (d.confirm?`<h4>Confirm before sending</h4><div class="note">${esc(d.confirm)}</div>`:"");
-  const decided = d.status && d.status!=="posted" ? `<p class="note">This lead is already marked <b>${esc(d.status)}</b>. The first decision is the one that counts.</p>` : "";
+  const confirmBox = d.confirm?`<h4>Confirm before sending</h4><div class="note">${esc(d.confirm)}</div>`:"";
+  const decided = d.status && d.status!=="posted" && d.status!=="withdrawn" ? `<p class="note">This lead is already marked <b>${esc(d.status)}</b>. The first decision is the one that counts.</p>` : "";
+  if(d.status==="withdrawn"){
+    app.innerHTML = who+`<p class="note">This lead was withdrawn and cannot be approved.</p>`;
+    return;
+  }
   if(p.action==="edit"){
-    app.innerHTML = who+decided+ctx+`<label><b>Day 0</b> (first email)</label><textarea class="f" id="d0">${esc(day0)}</textarea>
+    app.innerHTML = who+decided+confirmBox+`<label><b>Subject</b></label><input id="subj" value="${esc(subject)}">
+    <label><b>Day 0</b> (first email)</label><textarea class="f" id="d0">${esc(day0)}</textarea>
     <label><b>Day 3</b> (follow-up)</label><textarea class="f" id="d3">${esc(d.day3||"")}</textarea>
     <label><b>Day 7</b> (follow-up)</label><textarea class="f" id="d7">${esc(d.day7||"")}</textarea>
     <button class="ok" id="go">Save &amp; approve all 3</button><button class="no" id="dn">Deny</button>`;
     document.getElementById("go").onclick=()=>{
       const v = id => document.getElementById(id).value;
       const edited = JSON.stringify({day0:v("d0"), day3:v("d3"), day7:v("d7")});
-      send("edit", subject, edited).then(()=>done("Edited ✏️ and approved (all 3 emails)")).catch(fail);
+      send("edit", v("subj"), edited).then(()=>done("Edited ✏️ and approved (all 3 emails)")).catch(fail);
     };
     document.getElementById("dn").onclick=()=>send("deny").then(()=>done("Denied ❌")).catch(fail);
   } else {
     const a=p.action==="approve";
+    const ctx = (subject?`<h4>Subject</h4><div class="mail">${esc(subject)}</div>`:"")+confirmBox;
     app.innerHTML = who+decided+ctx+`<h4>Day 0 (first email)</h4><div class="mail">${esc(day0)}</div>
     <h4>Day 3 (follow-up)</h4><div class="mail">${esc(d.day3||"(none)")}</div>
     <h4>Day 7 (follow-up)</h4><div class="mail">${esc(d.day7||"(none)")}</div>
     <p>${a?"Approve all 3 emails as written and send them to Smartlead?":"Deny this lead?"}</p>
     <button class="${a?"ok":"no"}" id="go">${a?"Approve all 3 ✅":"Deny ❌"}</button>`;
-    document.getElementById("go").onclick=()=>send(p.action).then(()=>done(a?"Approved ✅ (all 3 emails)":"Denied ❌")).catch(fail);
+    document.getElementById("go").onclick=()=>send(p.action, subject, "").then(()=>done(a?"Approved ✅ (all 3 emails)":"Denied ❌")).catch(fail);
   }
 }
 function loadDrafts(){
@@ -93,7 +98,12 @@ function loadDrafts(){
 if((!p.id && !p.email) || !p.token || !["approve","deny","edit"].includes(p.action)){ renderSingle(); }
 else {
   app.innerHTML = who+`<p class="muted">Loading…</p>`;
-  loadDrafts().then(d=>{ (d && d.ok && d.has_drafts && (d.day3 || d.day7)) ? renderThree(d) : renderSingle(); })
-    .catch(()=>renderSingle());
+  loadDrafts().then(d=>{
+    if(d && d.ok && d.status==="withdrawn"){
+      app.innerHTML = who+`<p class="note">This lead was withdrawn and cannot be approved.</p>`;
+      return;
+    }
+    (d && d.ok && d.has_drafts && (d.day3 || d.day7)) ? renderThree(d) : renderSingle();
+  }).catch(()=>renderSingle());
 }
 </script></body></html>
